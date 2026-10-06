@@ -3,7 +3,7 @@
 <head>
 
 <meta charset="UTF-8">
-<title>Mock Test | ME5147N</title>
+<title>Mock Test | ME4127</title>
 
 <meta
   name="viewport"
@@ -99,8 +99,9 @@ body{
   margin-bottom:12px;
 
   line-height:1.5;
-}
 
+  overflow-wrap:break-word;
+}
 
 /* =========================
    CONTENT TEXT
@@ -113,6 +114,12 @@ body{
   margin-bottom:10px;
 
   word-wrap:break-word;
+
+  white-space:pre-wrap;
+
+  overflow-wrap:break-word;
+
+  tab-size:4;
 }
 
 
@@ -161,6 +168,8 @@ body{
   background:#fff;
 
   line-height:1.45;
+
+  overflow-wrap:break-word;
 }
 
 .option:hover{
@@ -617,7 +626,7 @@ function getImageURL(imagePath){
 
   // GitHub Pages image repository
   const GITHUB_IMAGE_BASE =
-    "https://ME5147N-2026.github.io/loginn/";
+    "https://me4127-2026.github.io/loginn/";
 
   // Remove leading slash if present
   imagePath =
@@ -646,11 +655,7 @@ function renderContent(content){
 
   if(typeof content === "string"){
 
-    return `
-      <div class="contentText">
-        ${escapeHTML(content)}
-      </div>
-    `;
+    return `<div class="contentText">${escapeHTML(content)}</div>`;
 
   }
 
@@ -670,11 +675,7 @@ function renderContent(content){
     String(content.text).trim() !== ""
   ){
 
-    html += `
-      <div class="contentText">
-        ${escapeHTML(content.text)}
-      </div>
-    `;
+    html += `<div class="contentText">${escapeHTML(content.text)}</div>`;
 
   }
 
@@ -689,11 +690,11 @@ function renderContent(content){
 
     html += `
       <img
-      class="contentImage"
-      src="${getImageURL(content.image)}"
-      alt="Question image"
-      loading="lazy"
-      onerror="this.style.display='none';"
+        class="contentImage"
+        src="${getImageURL(content.image)}"
+        alt="Question image"
+        loading="lazy"
+        onerror="this.style.display='none';"
       >
     `;
 
