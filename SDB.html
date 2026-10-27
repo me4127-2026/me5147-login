@@ -969,16 +969,29 @@ function toggleExamSummary(){
     }
 
     // Convert backend marks into display values.
-    function getDirectMarks(value, max){
-      const parsed = Number(value);
-      const score = Number.isFinite(parsed) ? parsed : 0;
+    
+function getDirectMarks(value, max) {
+  // Display a hyphen when marks are not available
+  if (
+    value === null ||
+    value === undefined ||
+    String(value).trim() === ""
+  ) {
+    return { text: "-", val: 0, available: false };
+  }
 
-      return {
-        text: `${score} / ${max}`,
-        val: score
-      };
-    }
+  const score = Number(value);
 
+  if (!Number.isFinite(score)) {
+    return { text: "-", val: 0, available: false };
+  }
+
+  return {
+    text: `${score} / ${max}`,
+    val: score,
+    available: true
+  };
+}
     const ct1 = getDirectMarks(m.ct1, 5);
     const ct2 = getDirectMarks(m.ct2, 5);
     const ct3 = getDirectMarks(m.ct3, 5);
@@ -989,7 +1002,9 @@ function toggleExamSummary(){
     const end = getDirectMarks(m.end, 25);
 
     // Each CT contributes 50% of its marks to the internal total.
-    const internal = 0.5 * (ct1.val + ct2.val + ct3.val + ct4.val);
+    const internal = 0.5 * (
+    ct1.val + ct2.val + ct3.val + ct4.val
+    );
     const total = internal + mid.val + end.val;
 
     summaryLoading.style.display = "none";
