@@ -953,181 +953,128 @@ function toggleExamSummary(){
   summaryLoading.style.display = "block";
   summaryBox.style.display = "none";
 
-  Promise.all([
-    fetch(BACKEND,{
-      method:"POST",
-      body:new URLSearchParams({
-        action:"getStudentTestStatus",
-        token
-      })
-    }).then(r=>r.json()),
+  // Read marks directly from the Results sheet through getMarksSheet.
+  fetch(BACKEND, {
+    method: "POST",
+    body: new URLSearchParams({
+      action: "getMarksSheet",
+      token
+    })
+  })
+  .then(response => response.json())
+  .then(m => {
 
-    fetch(BACKEND,{
-      method:"POST",
-      body:new URLSearchParams({
-        action:"getMarksSheet",
-        token
-      })
-    }).then(r=>r.json())
-  ])
-
-  .then(([res,m])=>{
-
-    if(res.status !== "OK" || m.status !== "OK"){
-      summaryLoading.style.display = "none";
-      summaryBox.style.display = "block";
-      summaryBox.innerHTML = `
-        <div class="testBtn test-upcoming">
-          Unable to load marks sheet
-        </div>
-      `;
-      return;
+    if(m.status !== "OK"){
+      throw new Error(m.message || "Unable to load marks sheet");
     }
 
-    // ===== Helper =====
-    function getMarksById(testId, max){
-      const test = res.tests.find(t => t.id === testId);
-
-      if(!test) return { text:"-", val:null };
-
-      if(test.evaluated){
-        return {
-          text: `${test.score ?? 0} / ${max}`,
-          val: test.score ?? 0
-        };
-      }
-
-      if(test.globallyAttempted){
-        return {
-          text: `0 / ${max}`,
-          val: 0
-        };
-      }
+    // Convert backend marks into display values.
+    function getDirectMarks(value, max){
+      const parsed = Number(value);
+      const score = Number.isFinite(parsed) ? parsed : 0;
 
       return {
-        text: "-",
-        val: null
+        text: `${score} / ${max}`,
+        val: score
       };
     }
 
-    // ===== Get Marks =====
-    const ct1 = getMarksById("CT1", 5);
-    const ct2 = getMarksById("CT2", 5);
-    const ct3 = getMarksById("CT3", 5);
-    const ct4 = getMarksById("CT4", 5);
+    const ct1 = getDirectMarks(m.ct1, 5);
+    const ct2 = getDirectMarks(m.ct2, 5);
+    const ct3 = getDirectMarks(m.ct3, 5);
+    const ct4 = getDirectMarks(m.ct4, 5);
 
-    const mid = getMarksById("MID", 10);
-    const end = getMarksById("END", 25);
+    // Assumes the mid-semester examination is out of 15.
+    const mid = getDirectMarks(m.mid, 15);
+    const end = getDirectMarks(m.end, 25);
 
-    // ===== Calculations =====
-    const internal =
-      0.5 * (
-        (ct1.val || 0) +
-        (ct2.val || 0) +
-        (ct3.val || 0) +
-        (ct4.val || 0)
-      );
+    // Each CT contributes 50% of its marks to the internal total.
+    const internal = 0.5 * (ct1.val + ct2.val + ct3.val + ct4.val);
+    const total = internal + mid.val + end.val;
 
-    const total =
-      internal +
-      (mid.val || 0) +
-      (end.val || 0);
-
-    // ===== Render =====
     summaryLoading.style.display = "none";
     summaryBox.style.display = "block";
 
     summaryBox.innerHTML = `
-  <div style="overflow-x:auto">
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;text-align:center;font-weight:600">
+          <tr style="background:#3949ab;color:#fff;font-weight:800">
+            <th>Exam</th>
+            <th>Marks</th>
+            <th>Carry Forward</th>
+          </tr>
 
-    <table style="width:100%;border-collapse:collapse;text-align:center;font-weight:600">
+          <tr style="background:#e3f2fd;color:#0d47a1">
+            <td>CT - 1</td>
+            <td>${ct1.text}</td>
+            <td>${(ct1.val * 0.5).toFixed(2)}</td>
+          </tr>
 
-      <tr style="background:#3949ab;color:#fff;font-weight:800">
-        <th>Exam</th>
-        <th>Marks</th>
-        <th>Carry Forward</th>
-      </tr>
+          <tr style="background:#e3f2fd;color:#0d47a1">
+            <td>CT - 2</td>
+            <td>${ct2.text}</td>
+            <td>${(ct2.val * 0.5).toFixed(2)}</td>
+          </tr>
 
-      <tr style="background:#e3f2fd;color:#0d47a1">
-        <td>CT - 1</td>
-        <td>${ct1.text}</td>
-        <td>${ct1.val !== null ? (ct1.val*0.5).toFixed(2) : "-"}</td>
-      </tr>
+          <tr style="background:#e3f2fd;color:#0d47a1">
+            <td>CT - 3</td>
+            <td>${ct3.text}</td>
+            <td>${(ct3.val * 0.5).toFixed(2)}</td>
+          </tr>
 
-      <tr style="background:#e3f2fd;color:#0d47a1">
-        <td>CT - 2</td>
-        <td>${ct2.text}</td>
-        <td>${ct2.val !== null ? (ct2.val*0.5).toFixed(2) : "-"}</td>
-      </tr>
+          <tr style="background:#e3f2fd;color:#0d47a1">
+            <td>CT - 4</td>
+            <td>${ct4.text}</td>
+            <td>${(ct4.val * 0.5).toFixed(2)}</td>
+          </tr>
 
-      <tr style="background:#e3f2fd;color:#0d47a1">
-        <td>CT - 3</td>
-        <td>${ct3.text}</td>
-        <td>${ct3.val !== null ? (ct3.val*0.5).toFixed(2) : "-"}</td>
-      </tr>
+          <tr style="background:#bbdefb;font-weight:800">
+            <td colspan="2">Internal (Total)</td>
+            <td>${internal.toFixed(2)}/10</td>
+          </tr>
 
-      <tr style="background:#e3f2fd;color:#0d47a1">
-        <td>CT - 4</td>
-        <td>${ct4.text}</td>
-        <td>${ct4.val !== null ? (ct4.val*0.5).toFixed(2) : "-"}</td>
-      </tr>
+          <tr>
+            <td colspan="3"><hr style="border:1px dashed #999"></td>
+          </tr>
 
-      <tr style="background:#bbdefb;font-weight:800">
-        <td colspan="2">Internal (Total)</td>
-        <td>${internal.toFixed(2)}/10</td>
-      </tr>
+          <tr style="background:#e8f5e9;color:#1b5e20">
+            <td>Mid-Sem</td>
+            <td>${mid.text}</td>
+            <td>${mid.val.toFixed(1)}</td>
+          </tr>
 
-      <tr>
-        <td colspan="3">
-          <hr style="border:1px dashed #999">
-        </td>
-      </tr>
+          <tr style="background:#e8f5e9;color:#1b5e20">
+            <td>End-Sem</td>
+            <td>${end.text}</td>
+            <td>${end.val.toFixed(1)}</td>
+          </tr>
 
-      <tr style="background:#e8f5e9;color:#1b5e20">
-        <td>Mid-Sem</td>
-        <td>${mid.text}</td>
-        <td>${mid.val !== null ? mid.val.toFixed(1) : "-"}</td>
-      </tr>
+          <tr>
+            <td colspan="3"><hr style="border:1px dashed #999"></td>
+          </tr>
 
-      <tr style="background:#e8f5e9;color:#1b5e20">
-        <td>End-Sem</td>
-        <td>${end.text}</td>
-        <td>${end.val !== null ? end.val.toFixed(1) : "-"}</td>
-      </tr>
-
-      <tr>
-        <td colspan="3">
-          <hr style="border:1px dashed #999">
-        </td>
-      </tr>
-
-      <tr style="background:#ede7f6;color:#4a148c;font-weight:900;font-size:16px">
-        <td colspan="2">TOTAL</td>
-        <td>${total.toFixed(2)}/45</td>
-      </tr>
-
-    </table>
-
-  </div>
+          <tr style="background:#ede7f6;color:#4a148c;font-weight:900;font-size:16px">
+            <td colspan="2">TOTAL</td>
+            <td>${total.toFixed(2)}/45</td>
+          </tr>
+        </table>
+      </div>
     `;
   })
-    
-    .catch(err=>{
+  .catch(err => {
     console.error("Marks Sheet Error:", err);
 
     summaryLoading.style.display = "none";
     summaryBox.style.display = "block";
-
     summaryBox.innerHTML = `
       <div class="testBtn test-upcoming">
-        Failed to load Marks Sheet
+        Unable to load Marks Sheet. Please refresh and try again.
       </div>
     `;
   });
 }
 
- 
- function toggleMockTests(){
+function toggleMockTests(){
 
   if(mockBox.style.display === "block"){
     mockBox.style.display = "none";
