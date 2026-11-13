@@ -769,92 +769,98 @@ function renderDates(container, list, cls){
     .map(d => `<span class="dateChip ${cls}">${prettyDate(d)}</span>`)
     .join("");
 }
+let dashboardServerClockOffset = 0;
+let strictCountdownHandle = null;
+
+function formatTestCountdown(seconds){
+  const n = Math.max(0, Number(seconds) || 0);
+  const m = Math.floor(n / 60);
+  const sec = n % 60;
+  return `${String(m).padStart(2,"0")}:${String(sec).padStart(2,"0")}`;
+}
+
+function startStrictCountdowns(){
+  if(strictCountdownHandle) clearInterval(strictCountdownHandle);
+  const update = () => {
+    document.querySelectorAll("[data-strict-deadline]").forEach(el => {
+      const deadline = Number(el.getAttribute("data-strict-deadline"));
+      if(!deadline) return;
+      const remaining = Math.max(0, Math.ceil((deadline - (Date.now() + dashboardServerClockOffset))/1000));
+      const node = el.querySelector("[data-countdown-value]");
+      if(node) node.textContent = formatTestCountdown(remaining);
+      if(remaining <= 0 && node) node.textContent = "00:00 — time expired";
+    });
+  };
+  update();
+  strictCountdownHandle = setInterval(update, 1000);
+}
+
 function toggleClassTests(){
-  if(testsBox.style.display==="block"){
-    testsBox.style.display="none";
+  if(testsBox.style.display === "block"){
+    testsBox.style.display = "none";
+    if(strictCountdownHandle) clearInterval(strictCountdownHandle);
     return;
   }
 
   closeAll();
-  testsLoading.style.display="block";
-
+  testsLoading.style.display = "block";
   fetch(BACKEND,{
     method:"POST",
-    body:new URLSearchParams({
-      action:"getStudentTestStatus",
-      token
-    })
+    body:new URLSearchParams({action:"getStudentTestStatus", token})
   })
   .then(r=>r.json())
   .then(res=>{
-    testsLoading.style.display="none";
-    testsBox.style.display="block";
-
-    testsBox.innerHTML = res.tests
-  .filter(t => t.id.startsWith("CT"))   // 👈 ONLY CLASS TESTS
-  .map(t => {
-
-  /* CASE 1: Student already attempted */
-  if (t.attempted) {
-  return `
-    <div class="testBtn test-completed">
-      ${t.name} (COMPLETED)
-      <div style="font-size:12px;font-weight:600;margin-top:4px">
-        Test conducted on: ${t.completionDate}
-      </div>
-    </div>
-  `;
-}
-
-  /* CASE 2: Student is enabled → allow start (MOST IMPORTANT) */
-  if (t.enabled) {
-    return `
-      <div class="testBtn test-active"
-           onclick="startTestConfirm('${t.id}')">
-        ${t.name} (START TEST)
-      </div>
-    `;
-  }
-
- /* CASE 3: Test conducted (anyone attempted) */
-if (t.globallyAttempted) {
-  return `
-    <div class="testBtn test-completed">
-      ${t.name} (COMPLETED)
-      <div style="font-size:12px;font-weight:600;margin-top:4px">
-        Test conducted on: ${t.completionDate || "-"}
-      </div>
-    </div>
-  `;
-}
-
-  /* CASE 4: Test not started yet */
-  return `
-    <div class="testBtn test-upcoming">
-      ${t.name} (UPCOMING)
-    </div>
-  `;
-
-}).join("");
+    testsLoading.style.display = "none";
+    testsBox.style.display = "block";
+    if(!res || res.status !== "OK"){
+      testsBox.innerHTML = '<div class="testBtn test-upcoming">Unable to load class tests. Please refresh.</div>';
+      return;
+    }
+    dashboardServerClockOffset = Number(res.serverNow || Date.now()) - Date.now();
+    testsBox.innerHTML = res.tests.filter(t => String(t.id).startsWith("CT")).map(t => {
+      if(t.attempted || (t.strictExpired && t.eligible)){
+        return `<div class="testBtn test-completed">
+          ${t.name} (COMPLETED)
+          <div style="font-size:12px;font-weight:600;margin-top:4px">Test conducted on: ${t.completionDate || "-"}</div>
+        </div>`;
+      }
+      if(t.enabled){
+        const strictTimer = t.timingMode === "STRICT" && Number(t.deadlineEpoch) > 0
+          ? `<div style="font-size:12px;font-weight:700;margin-top:5px">Time remaining: <span data-countdown-value>${formatTestCountdown(t.remainingSeconds)}</span></div>`
+          : "";
+        return `<div class="testBtn test-active" ${strictTimer ? `data-strict-deadline="${Number(t.deadlineEpoch)}"` : ""}
+          onclick="startTestConfirm('${String(t.id).replace(/[^A-Za-z0-9_-]/g, "")}', '${t.timingMode || "CUSTOM"}')">
+          ${t.name} (START TEST)${strictTimer}
+        </div>`;
+      }
+      if(t.globallyAttempted){
+        return `<div class="testBtn test-completed">
+          ${t.name} (COMPLETED)
+          <div style="font-size:12px;font-weight:600;margin-top:4px">Test conducted on: ${t.completionDate || "-"}</div>
+        </div>`;
+      }
+      return `<div class="testBtn test-upcoming">${t.name} (UPCOMING)</div>`;
+    }).join("");
+    startStrictCountdowns();
+  })
+  .catch(err=>{
+    console.error(err);
+    testsLoading.style.display = "none";
+    testsBox.style.display = "block";
+    testsBox.innerHTML = '<div class="testBtn test-upcoming">Network error. Please refresh and try again.</div>';
   });
 }
-  function startTestConfirm(testId){
-  const ok = confirm(
-    "Are you sure you want to start the test?\n\n" +
-    "• Test timer will start immediately\n" +
-    "• You cannot reattempt\n" +
-    "• Leaving the page will auto-submit"
-  );
 
+function startTestConfirm(testId, timingMode){
+  const timerMessage = timingMode === "STRICT"
+    ? "• The common countdown has already started and will not reset when you open the test.\n"
+    : "• Your individual countdown starts when you first open the test.\n";
+  const ok = confirm("Are you sure you want to start the test?\n\n" + timerMessage +
+    "• You cannot reattempt after submission or expiry.\n" +
+    "• If you leave or refresh the page, you may resume the same active attempt while time remains.");
   if(!ok) return;
-
-  // Optional UX polish
   testsLoading.style.display = "block";
-
-  // Small delay = smoother UX
-  setTimeout(()=>{
-    location.href = `test.html?test=${testId}`;
-  }, 300);
+  setTimeout(()=>{ location.href = `test.html?test=${encodeURIComponent(testId)}`; }, 200);
 }
 function prettyDate(d){
   const dt = new Date(d);
