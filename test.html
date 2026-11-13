@@ -322,11 +322,25 @@ let questions = [];
 let index = 0;
 
 let answers = {};
+const answerStorageKey = `classTestAnswers_${token}_${testId}`;
+try {
+  const savedAnswers = localStorage.getItem(answerStorageKey);
+  if(savedAnswers) answers = JSON.parse(savedAnswers) || {};
+} catch(err) {
+  console.warn("Could not restore saved answers", err);
+}
+
+function saveAnswers(){
+  try { localStorage.setItem(answerStorageKey, JSON.stringify(answers)); }
+  catch(err) { console.warn("Could not save answers locally", err); }
+}
 
 let selected = null;
 
 let timeLeft = 10 * 60;
-
+let timingMode = "CUSTOM";
+let strictDeadlineEpoch = null;
+let serverClockOffset = 0;
 let timerHandle;
 
 let submitted = false;
@@ -520,31 +534,37 @@ fetch(BACKEND,{
 .then(res=>{
 
   if(res.status !== "STARTED"){
-
-    alert("You cannot attempt this test");
-
+    try { localStorage.removeItem(answerStorageKey); } catch(err) {}
+    const message = res.status === "TIME_EXPIRED"
+      ? "The test time has expired."
+      : res.status === "ALREADY_ATTEMPTED"
+        ? "This test attempt has already been submitted."
+        : "You are not permitted to attempt this test.";
+    alert(message);
     location.replace("SDB.html");
-
     return;
-
   }
 
-
-  /*
-     Use backend duration if supplied.
-     Otherwise 5 minutes.
-  */
-
-  if(res.duration){
-
-    timeLeft =
-      Number(res.duration) * 60;
-
+  if(!res.resumed){
+    answers = {};
+    try { localStorage.removeItem(answerStorageKey); } catch(err) {}
+  }
+  timingMode = res.timingMode || "CUSTOM";
+  serverClockOffset = Number(res.serverNow || Date.now()) - Date.now();
+  if(timingMode === "STRICT"){
+    strictDeadlineEpoch = Number(res.deadlineEpoch);
+    timeLeft = Math.max(0, Number(res.remainingSeconds) || 0);
+  } else {
+    timeLeft = Math.max(0, Number(res.remainingSeconds) || (Number(res.duration || 5) * 60));
   }
 
+  if(timeLeft <= 0){
+    alert("The test time has expired.");
+    location.replace("SDB.html");
+    return;
+  }
 
   loadQuestions();
-
   startTimer();
 
 });
@@ -587,9 +607,9 @@ function loadQuestions(){
       res.status !== "OK"
     ){
 
-      alert(
-        "Questions not available for this test"
-      );
+      alert(res && res.status === "TIME_EXPIRED"
+        ? "The test time has expired."
+        : "Questions not available for this test");
 
       location.replace("SDB.html");
 
@@ -660,34 +680,22 @@ function loadQuestions(){
 ========================================= */
 
 function startTimer(){
-
-  timerHandle =
-    setInterval(()=>{
-
-      timeLeft--;
-
-
-      const m =
-        Math.floor(timeLeft / 60);
-
-      const s =
-        timeLeft % 60;
-
-
-      timer.innerText =
-        `${String(m).padStart(2,"0")}:${String(s).padStart(2,"0")}`;
-
-
-      if(timeLeft <= 0){
-
-        clearInterval(timerHandle);
-
-        submit(true);
-
-      }
-
-    },1000);
-
+  const updateTimer = () => {
+    if(timingMode === "STRICT" && strictDeadlineEpoch){
+      timeLeft = Math.max(0, Math.ceil((strictDeadlineEpoch - (Date.now() + serverClockOffset))/1000));
+    }
+    const m = Math.floor(timeLeft / 60);
+    const sec = timeLeft % 60;
+    document.getElementById("timer").innerText = `${String(m).padStart(2,"0")}:${String(sec).padStart(2,"0")}`;
+    if(timeLeft <= 0){
+      clearInterval(timerHandle);
+      submit(true);
+      return;
+    }
+    if(timingMode !== "STRICT") timeLeft--;
+  };
+  updateTimer();
+  timerHandle = setInterval(updateTimer, 1000);
 }
 
 
@@ -813,6 +821,8 @@ function pick(v,el){
   el.classList.add("selected");
 
   selected = v;
+  answers[questions[index].id] = selected;
+  saveAnswers();
 
 }
 
@@ -838,11 +848,8 @@ function previous(){
   */
 
   if(selected){
-
-    answers[
-      questions[index].id
-    ] = selected;
-
+    answers[questions[index].id] = selected;
+    saveAnswers();
   }
 
 
@@ -878,9 +885,8 @@ function next(){
      Save answer
   */
 
-  answers[
-    questions[index].id
-  ] = selected;
+  answers[questions[index].id] = selected;
+  saveAnswers();
 
 
   /*
@@ -969,11 +975,10 @@ document
   .then(res=>{
 
     if(res.status === "SUBMITTED"){
-
-      alert(
-        "Test submitted successfully"
-      );
-
+      try { localStorage.removeItem(answerStorageKey); } catch(err) {}
+      alert(res.autoSubmitted || auto
+        ? "Your test has been submitted automatically."
+        : "Test submitted successfully");
     }
 
     else{
@@ -1006,25 +1011,15 @@ document
    AUTO SUBMIT RULES
 ========================================= */
 
-document.addEventListener(
-  "visibilitychange",
-  ()=>{
-
-    if(document.hidden)
-      submit(true);
-
+// Switching tabs or minimizing the browser does NOT submit the test.
+// The timer continues against the server-issued deadline. A refresh or
+// navigation can resume the same active attempt while time remains.
+window.addEventListener("beforeunload", (event)=>{
+  if(!submitted){
+    event.preventDefault();
+    event.returnValue = "Your test is still in progress. Leaving will not pause the timer.";
   }
-);
-
-
-window.addEventListener(
-  "beforeunload",
-  ()=>{
-
-    submit(true);
-
-  }
-);
+});
 
 </script>
 
