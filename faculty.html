@@ -165,7 +165,19 @@ button:disabled{opacity:.6;cursor:not-allowed;}
           Custom selection
         </label>
 
-        <div id="custom_CT1" class="customList"></div>
+        <div class="subCard" style="margin-top:12px;background:#fff;">
+  <div style="font-weight:700;margin-bottom:6px;">Test Timing</div>
+  <label class="radioRow">
+    <input type="radio" name="timing_CT1" value="CUSTOM" checked>
+    Custom Starting — timer starts when each student opens the test
+  </label>
+  <label class="radioRow">
+    <input type="radio" name="timing_CT1" value="STRICT">
+    Strict Starting — common timer starts when you enable the test
+  </label>
+</div>
+
+<div id="custom_CT1" class="customList"></div>
 
         <button class="btn-main" onclick="enableTest('CT1')">Enable Test</button>
       </div>
@@ -216,6 +228,18 @@ Enable for attended students
 <input type="radio" name="enable_CT2" value="CUSTOM" onclick="showCustom('CT2')">
 Custom selection
 </label>
+
+<div class="subCard" style="margin-top:12px;background:#fff;">
+  <div style="font-weight:700;margin-bottom:6px;">Test Timing</div>
+  <label class="radioRow">
+    <input type="radio" name="timing_CT2" value="CUSTOM" checked>
+    Custom Starting — timer starts when each student opens the test
+  </label>
+  <label class="radioRow">
+    <input type="radio" name="timing_CT2" value="STRICT">
+    Strict Starting — common timer starts when you enable the test
+  </label>
+</div>
 
 <div id="custom_CT2" class="customList"></div>
 
@@ -270,6 +294,18 @@ Enable for attended students
 <input type="radio" name="enable_CT3" value="CUSTOM" onclick="showCustom('CT3')">
 Custom selection
 </label>
+
+<div class="subCard" style="margin-top:12px;background:#fff;">
+  <div style="font-weight:700;margin-bottom:6px;">Test Timing</div>
+  <label class="radioRow">
+    <input type="radio" name="timing_CT3" value="CUSTOM" checked>
+    Custom Starting — timer starts when each student opens the test
+  </label>
+  <label class="radioRow">
+    <input type="radio" name="timing_CT3" value="STRICT">
+    Strict Starting — common timer starts when you enable the test
+  </label>
+</div>
 
 <div id="custom_CT3" class="customList"></div>
 
@@ -462,32 +498,46 @@ function uploadPDF(){
 }
 /* ========= ENABLE TEST ========= */
 function enableTest(testId){
-  const mode=document.querySelector(`input[name="enable_${testId}"]:checked`);
-  if(!mode){ alert("Select enable mode"); return; }
+  const mode = document.querySelector(`input[name="enable_${testId}"]:checked`);
+  if(!mode){ alert("Select which students can access the test"); return; }
 
-  let rolls="";
-  if(mode.value==="CUSTOM"){
-    const c=[...document.querySelectorAll(`#custom_${testId} input:checked`)];
-    if(!c.length){ alert("Select students"); return; }
-    rolls=c.map(x=>x.value).join(",");
+  const timing = document.querySelector(`input[name="timing_${testId}"]:checked`);
+  if(!timing){ alert("Select the test timing mode"); return; }
+
+  let rolls = "";
+  if(mode.value === "CUSTOM"){
+    const selected = [...document.querySelectorAll(`#custom_${testId} input:checked`)];
+    if(!selected.length){ alert("Select at least one student"); return; }
+    rolls = selected.map(x => x.value).join(",");
   }
 
-  showLoader();
+  const timingLabel = timing.value === "STRICT"
+    ? "Strict Starting: the common countdown begins immediately when you enable the test. Continue?"
+    : "Custom Starting: each student's countdown begins when they first open the test. Continue?";
+  if(!confirm(timingLabel)) return;
 
+  showLoader();
   fetch(BACKEND,{
     method:"POST",
     body:new URLSearchParams({
       action:"enableClassTest",
-      token: facultyToken,
+      token:facultyToken,
       testId,
-      mode: mode.value,
-      rolls
+      mode:mode.value,
+      rolls,
+      timingMode:timing.value
     })
   })
   .then(r=>r.json())
   .then(res=>{
     hideLoader();
-    alert(res.status==="OK"?"Test Enabled":"Enable Failed");
+    if(res.status === "OK") alert(`Test Enabled (${timing.value === "STRICT" ? "Strict Starting" : "Custom Starting"})`);
+    else alert(res.message || "Enable Failed");
+  })
+  .catch(err=>{
+    hideLoader();
+    console.error(err);
+    alert("Network error while enabling the test");
   });
 }
 
