@@ -43,7 +43,17 @@ body{
 .questionContent{
   margin-bottom:16px;
 }
+/* Preserve formatting in questions only */
+.question,
+.contentText {
+    white-space: pre-wrap;
+    tab-size: 4;
+}
 
+/* Keep MCQ options compact */
+.optionContent {
+    white-space: normal;
+}
 
 /* =========================
    OPTIONS
